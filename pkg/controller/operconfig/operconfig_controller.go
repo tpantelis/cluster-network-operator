@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/openshift/cluster-network-operator/pkg/hypershift"
+	openshifttls "github.com/openshift/controller-runtime-common/pkg/tls"
 	"github.com/pkg/errors"
 
 	configv1 "github.com/openshift/api/config/v1"
@@ -174,6 +175,34 @@ func add(mgr manager.Manager, r *ReconcileOperConfig) error {
 		},
 	}
 	if err := c.Watch(source.Kind[crclient.Object](mgr.GetCache(), &corev1.Node{}, handler.EnqueueRequestsFromMapFunc(reconcileOperConfig), nodePredicate)); err != nil {
+		return err
+	}
+
+	// Watch for changes to the APIServer TLS profile
+	err = c.Watch(source.Kind[crclient.Object](mgr.GetCache(), &configv1.APIServer{},
+		handler.EnqueueRequestsFromMapFunc(reconcileOperConfig),
+		predicate.Funcs{
+			CreateFunc: func(evt event.CreateEvent) bool {
+				// Don't reconcile on initial creation/add events
+				return false
+			},
+			UpdateFunc: func(evt event.UpdateEvent) bool {
+				newAPI, ok := evt.ObjectNew.(*configv1.APIServer)
+				if !ok || newAPI.GetName() != openshifttls.APIServerName {
+					return false
+				}
+
+				oldAPI := evt.ObjectOld.(*configv1.APIServer)
+
+				// Only reconcile if TLS profile or adherence changed
+				tlsProfileChanged := !reflect.DeepEqual(oldAPI.Spec.TLSSecurityProfile, newAPI.Spec.TLSSecurityProfile)
+				adherenceChanged := oldAPI.Spec.TLSAdherence != newAPI.Spec.TLSAdherence
+
+				return tlsProfileChanged || adherenceChanged
+			},
+		},
+	))
+	if err != nil {
 		return err
 	}
 
