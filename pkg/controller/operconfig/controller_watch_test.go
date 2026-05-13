@@ -17,6 +17,58 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 )
 
+func testTLSProfileWatch() {
+	t := newTestDriver()
+
+	var watcher *watch.FakeWatcher
+
+	JustBeforeEach(func(ctx context.Context) {
+		watcher = t.fakeCache.AwaitWatcher(&configv1.APIServer{})
+
+		// Creating the APIServer shouldn't trigger reconciliation.
+		watcher.Add(t.apiServer.DeepCopy())
+		t.ensureNoClusterOperatorConditions(ctx)
+	})
+
+	When("the security profile is changed", func() {
+		It("should trigger reconciliation", func(ctx context.Context) {
+			t.apiServer.Spec.TLSSecurityProfile.Type = configv1.TLSProfileModernType
+			watcher.Modify(t.apiServer)
+			t.awaitAnyClusterOperatorConditions(ctx)
+		})
+	})
+
+	When("the security profile is added", func() {
+		BeforeEach(func() {
+			t.apiServer.Spec.TLSSecurityProfile = nil
+		})
+
+		It("should trigger reconciliation", func(ctx context.Context) {
+			t.apiServer.Spec.TLSSecurityProfile = &configv1.TLSSecurityProfile{
+				Type: configv1.TLSProfileIntermediateType,
+			}
+			watcher.Modify(t.apiServer)
+			t.awaitAnyClusterOperatorConditions(ctx)
+		})
+	})
+
+	When("the adherence policy is changed", func() {
+		It("should trigger reconciliation", func(ctx context.Context) {
+			t.apiServer.Spec.TLSAdherence = configv1.TLSAdherencePolicyStrictAllComponents
+			watcher.Modify(t.apiServer)
+			t.awaitAnyClusterOperatorConditions(ctx)
+		})
+	})
+
+	When("the APIServer is updated but the TLS config is unchanged", func() {
+		It("should not trigger reconciliation", func(ctx context.Context) {
+			t.apiServer.Spec.Encryption = configv1.APIServerEncryption{Type: configv1.EncryptionTypeAESCBC}
+			watcher.Modify(t.apiServer)
+			t.ensureNoClusterOperatorConditions(ctx)
+		})
+	})
+}
+
 func testOperatorConfigWatch() {
 	t := newTestDriver()
 

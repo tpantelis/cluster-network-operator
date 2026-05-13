@@ -18,8 +18,10 @@ import (
 	"github.com/openshift/cluster-network-operator/pkg/controller/fake"
 	"github.com/openshift/cluster-network-operator/pkg/controller/operconfig"
 	"github.com/openshift/cluster-network-operator/pkg/controller/statusmanager"
+	"github.com/openshift/cluster-network-operator/pkg/hypershift"
 	"github.com/openshift/cluster-network-operator/pkg/names"
 	"github.com/openshift/cluster-network-operator/pkg/network"
+	openshifttls "github.com/openshift/controller-runtime-common/pkg/tls"
 	cohelpers "github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
 	"github.com/openshift/library-go/pkg/operator/configobserver/featuregates"
 	corev1 "k8s.io/api/core/v1"
@@ -59,9 +61,15 @@ var _ = BeforeSuite(func() {
 			&uns.UnstructuredList{},
 		)
 	}
+
+	scheme.Scheme.AddKnownTypeWithName(hypershift.HostedClusterGVK, &uns.Unstructured{})
+	scheme.Scheme.AddKnownTypeWithName(
+		schema.GroupVersionKind{Group: hypershift.HostedClusterGVK.Group, Version: hypershift.HostedClusterGVK.Version,
+			Kind: hypershift.HostedClusterGVK.Kind + "List"}, &uns.UnstructuredList{})
 })
 
 var _ = Describe("ReconcileOperConfig", func() {
+	Context("TLS Profile Watch", testTLSProfileWatch)
 	Context("Operator Config Watch", testOperatorConfigWatch)
 	Context("Cluster Config Watch", testClusterConfigWatch)
 	Context("Node Watch", testNodeWatch)
@@ -74,6 +82,7 @@ var _ = Describe("ReconcileOperConfig", func() {
 })
 
 type testDriver struct {
+	apiServer      *configv1.APIServer
 	clusterConfig  *configv1.Network
 	operConfig     *operv1.Network
 	infrastructure *configv1.Infrastructure
@@ -87,6 +96,16 @@ func newTestDriver() *testDriver {
 	t := &testDriver{}
 
 	BeforeEach(func() {
+		t.apiServer = &configv1.APIServer{
+			ObjectMeta: metav1.ObjectMeta{Name: openshifttls.APIServerName},
+			Spec: configv1.APIServerSpec{
+				TLSSecurityProfile: &configv1.TLSSecurityProfile{
+					Type: configv1.TLSProfileIntermediateType,
+				},
+				TLSAdherence: configv1.TLSAdherencePolicyLegacyAdheringComponentsOnly,
+			},
+		}
+
 		t.clusterConfig = &configv1.Network{
 			ObjectMeta: metav1.ObjectMeta{Name: names.CLUSTER_CONFIG},
 			Spec: configv1.NetworkSpec{
@@ -153,7 +172,7 @@ func newTestDriver() *testDriver {
 			},
 		}
 
-		t.fakeClient = fakeclient.NewFakeClient(t.infrastructure, clusterConfigMap,
+		t.fakeClient = fakeclient.NewFakeClient(t.apiServer, t.infrastructure, clusterConfigMap,
 			&configv1.Proxy{ObjectMeta: metav1.ObjectMeta{Name: "cluster"}},
 			&configv1.ClusterOperator{ObjectMeta: metav1.ObjectMeta{Name: clusterOperatorName}})
 

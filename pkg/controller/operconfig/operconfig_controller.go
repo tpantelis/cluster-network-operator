@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/openshift/cluster-network-operator/pkg/hypershift"
+	openshifttls "github.com/openshift/controller-runtime-common/pkg/tls"
 	"github.com/pkg/errors"
 
 	configv1 "github.com/openshift/api/config/v1"
@@ -32,6 +33,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/watch"
 	v1coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -174,6 +176,96 @@ func add(mgr manager.Manager, r *ReconcileOperConfig) error {
 	}
 	if err := c.Watch(source.Kind[crclient.Object](mgr.GetCache(), &corev1.Node{}, handler.EnqueueRequestsFromMapFunc(reconcileOperConfig), nodePredicate)); err != nil {
 		return err
+	}
+
+	// Watch for changes to the APIServer TLS profile
+	err = c.Watch(source.Kind[crclient.Object](mgr.GetCache(), &configv1.APIServer{},
+		handler.EnqueueRequestsFromMapFunc(reconcileOperConfig),
+		predicate.Funcs{
+			CreateFunc: func(evt event.CreateEvent) bool {
+				// Don't reconcile on initial creation/add events
+				return false
+			},
+			UpdateFunc: func(evt event.UpdateEvent) bool {
+				newAPI, ok := evt.ObjectNew.(*configv1.APIServer)
+				if !ok || newAPI.GetName() != openshifttls.APIServerName {
+					return false
+				}
+
+				oldAPI := evt.ObjectOld.(*configv1.APIServer)
+
+				// Only reconcile if TLS profile or adherence changed
+				tlsProfileChanged := !reflect.DeepEqual(oldAPI.Spec.TLSSecurityProfile, newAPI.Spec.TLSSecurityProfile)
+				adherenceChanged := oldAPI.Spec.TLSAdherence != newAPI.Spec.TLSAdherence
+
+				return tlsProfileChanged || adherenceChanged
+			},
+		},
+	))
+	if err != nil {
+		return err
+	}
+
+	// In HyperShift mode, watch for changes to the HostedCluster TLS profile in the management cluster.
+	hc := hypershift.NewHyperShiftConfig()
+	if hc.Enabled {
+		// Create a dynamic informer for HostedCluster in the management cluster
+		dynClient := r.client.ClientFor(names.ManagementClusterName).Dynamic()
+		hostedClusterInformer := cache.NewSharedIndexInformer(
+			cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
+				ListWithContextFunc: func(ctx context.Context, options metav1.ListOptions) (runtime.Object, error) {
+					return dynClient.Resource(hypershift.HostedClusterGVR).Namespace(hc.Namespace).List(ctx, options)
+				},
+				WatchFuncWithContext: func(ctx context.Context, options metav1.ListOptions) (watch.Interface, error) {
+					return dynClient.Resource(hypershift.HostedClusterGVR).Namespace(hc.Namespace).Watch(ctx, options)
+				},
+			}, dynClient),
+			&uns.Unstructured{},
+			0, // don't resync
+			cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
+		)
+
+		r.client.ClientFor(names.ManagementClusterName).AddCustomInformer(hostedClusterInformer)
+
+		err = c.Watch(&source.Informer{
+			Informer: hostedClusterInformer,
+			Handler:  handler.EnqueueRequestsFromMapFunc(reconcileOperConfig),
+			Predicates: []predicate.TypedPredicate[crclient.Object]{
+				predicate.NewPredicateFuncs(func(obj crclient.Object) bool {
+					// Only watch our specific HostedCluster
+					return obj.GetName() == hc.Name && obj.GetNamespace() == hc.Namespace
+				}),
+				predicate.Funcs{
+					CreateFunc: func(evt event.CreateEvent) bool {
+						// Don't reconcile on initial creation/add events
+						return false
+					},
+					UpdateFunc: func(evt event.UpdateEvent) bool {
+						newObj, ok := evt.ObjectNew.(*uns.Unstructured)
+						if !ok {
+							return false
+						}
+
+						oldObj, ok := evt.ObjectOld.(*uns.Unstructured)
+						if !ok {
+							return false
+						}
+
+						oldTLSProfile, _, _ := uns.NestedFieldCopy(oldObj.Object, "spec", "configuration", "apiServer", "tlsSecurityProfile")
+						newTLSProfile, _, _ := uns.NestedFieldCopy(newObj.Object, "spec", "configuration", "apiServer", "tlsSecurityProfile")
+
+						oldAdherence, _, _ := uns.NestedString(oldObj.Object, "spec", "configuration", "apiServer", "tlsAdherence")
+						newAdherence, _, _ := uns.NestedString(newObj.Object, "spec", "configuration", "apiServer", "tlsAdherence")
+
+						// Only reconcile if TLS profile or adherence changed
+						return !reflect.DeepEqual(oldTLSProfile, newTLSProfile) || oldAdherence != newAdherence
+					},
+				},
+			},
+		})
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

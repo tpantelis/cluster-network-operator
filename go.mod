@@ -26,7 +26,7 @@ require (
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kube-proxy v0.35.2
 	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
-	sigs.k8s.io/controller-runtime v0.23.1
+	sigs.k8s.io/controller-runtime v0.23.3
 )
 
 require (
@@ -103,7 +103,8 @@ require (
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/openshift/api v0.0.0-20260320151444-324a1bcb9f55
 	github.com/openshift/client-go v0.0.0-20260320040014-4b5fc2cdad98
-	github.com/openshift/library-go v0.0.0-20260303171201-5d9eb6295ff6
+	github.com/openshift/controller-runtime-common v0.0.0-20260428152732-64ee174f5e2e
+	github.com/openshift/library-go v0.0.0-20260318140748-04979c746b4d
 	github.com/openshift/machine-config-operator v0.0.1-0.20250724162154-ab14c8e2843b
 	k8s.io/apiextensions-apiserver v0.35.2
 	k8s.io/client-go v0.35.2

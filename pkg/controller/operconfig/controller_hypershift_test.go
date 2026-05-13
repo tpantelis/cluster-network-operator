@@ -28,6 +28,7 @@ import (
 	. "github.com/onsi/gomega/gstruct"
 	configv1 "github.com/openshift/api/config/v1"
 	operv1 "github.com/openshift/api/operator/v1"
+	"github.com/openshift/cluster-network-operator/pkg/hypershift"
 	"github.com/openshift/cluster-network-operator/pkg/names"
 	"github.com/openshift/cluster-network-operator/pkg/util"
 	cohelpers "github.com/openshift/library-go/pkg/config/clusteroperator/v1helpers"
@@ -38,14 +39,14 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
+const (
+	hostedClusterName      = "my-hosted-cluster"
+	hostedClusterNamespace = "my-hosted-cluster-ns"
+	infraName              = "my-hosted-cluster-infra"
+)
+
 func testHypershiftMode() {
 	t := newTestDriver()
-
-	const (
-		hostedClusterName      = "my-hosted-cluster"
-		hostedClusterNamespace = "my-hosted-cluster-ns"
-		infraName              = "my-hosted-cluster-infra"
-	)
 
 	BeforeEach(func() {
 		// Set HyperShift environment variables
@@ -61,16 +62,35 @@ func testHypershiftMode() {
 			os.Unsetenv("NETWORKING_CONSOLE_PLUGIN_IMAGE")
 		})
 
-		// Set infrastructure name for HyperShift mode
 		t.infrastructure.Status.InfrastructureName = infraName
 	})
 
 	JustBeforeEach(func(ctx context.Context) {
-		// Create HostedControlPlane object in management cluster
+		// Create the HostedCluster object in the management cluster.
+		hc := &uns.Unstructured{
+			Object: map[string]interface{}{
+				"apiVersion": hypershift.HostedClusterGVK.GroupVersion().String(),
+				"kind":       hypershift.HostedClusterGVK.Kind,
+				"metadata": map[string]interface{}{
+					"name":      hostedClusterName,
+					"namespace": hostedClusterNamespace,
+				},
+				"spec": map[string]interface{}{
+					"configuration": map[string]interface{}{
+						"apiServer": map[string]interface{}{},
+					},
+				},
+			},
+		}
+		_, err := t.fakeClient.ClientFor(names.ManagementClusterName).Dynamic().
+			Resource(hypershift.HostedClusterGVR).Namespace(hostedClusterNamespace).Create(ctx, hc, metav1.CreateOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		// Create the HostedControlPlane object in the management cluster
 		hcp := &uns.Unstructured{
 			Object: map[string]interface{}{
-				"apiVersion": "hypershift.openshift.io/v1beta1",
-				"kind":       "HostedControlPlane",
+				"apiVersion": hypershift.HostedControlPlaneGVK.GroupVersion().String(),
+				"kind":       hypershift.HostedControlPlaneGVK.Kind,
 				"metadata": map[string]interface{}{
 					"name":      hostedClusterName,
 					"namespace": hostedClusterNamespace,
@@ -95,7 +115,7 @@ func testHypershiftMode() {
 		}
 		Expect(t.fakeClient.ClientFor(names.ManagementClusterName).CRClient().Create(ctx, hcp)).To(Succeed())
 
-		// Create ovn-cert secret in hosted cluster that will be copied to management cluster
+		// Create the ovn-cert secret in hosted cluster that should be copied to the management cluster
 		ovnCertSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "ovn-cert",
@@ -108,7 +128,7 @@ func testHypershiftMode() {
 		}
 		Expect(t.fakeClient.Default().CRClient().Create(ctx, ovnCertSecret)).To(Succeed())
 
-		// Create ovn-ca ConfigMap in hosted cluster that will be copied to management cluster
+		// Create the ovn-ca ConfigMap in hosted cluster that should be copied to the management cluster
 		ovnCAConfigMap := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "ovn-ca",
@@ -120,7 +140,7 @@ func testHypershiftMode() {
 		}
 		Expect(t.fakeClient.Default().CRClient().Create(ctx, ovnCAConfigMap)).To(Succeed())
 
-		// Create service CA ConfigMap in management cluster namespace
+		// Create the service CA ConfigMap in the management cluster
 		serviceCAConfigMap := &corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "openshift-service-ca.crt",
@@ -131,11 +151,11 @@ func testHypershiftMode() {
 			},
 		}
 		Expect(t.fakeClient.ClientFor(names.ManagementClusterName).CRClient().Create(ctx, serviceCAConfigMap)).To(Succeed())
-
-		t.fakeCache.AwaitWatcher(&operv1.Network{}).Add(t.operConfig)
 	})
 
 	Specify("reconciliation should correctly apply resources", func(ctx context.Context) {
+		t.fakeCache.AwaitWatcher(&operv1.Network{}).Add(t.operConfig)
+
 		t.awaitClusterOperatorConditions(ctx, func(g Gomega, conditions []configv1.ClusterOperatorStatusCondition) {
 			g.Expect(cohelpers.IsStatusConditionTrue(conditions, configv1.OperatorAvailable)).To(BeTrue())
 			g.Expect(cohelpers.IsStatusConditionFalse(conditions, configv1.OperatorProgressing)).To(BeTrue())
@@ -178,6 +198,56 @@ func testHypershiftMode() {
 			g.Expect(annotation).NotTo(BeEmpty(), "RelatedClusterObjectsAnnotation should contain management cluster resources")
 		}).Within(5 * time.Second).Should(Succeed())
 	})
+
+	Specify("HostedCluster TLS profile changes should trigger reconciliation", func(ctx context.Context) {
+		t.ensureNoClusterOperatorConditions(ctx)
+
+		hc := t.getHostedCluster(ctx)
+
+		// Update the TLS profile
+		Expect(uns.SetNestedField(hc.Object, string(configv1.TLSProfileModernType),
+			"spec", "configuration", "apiServer", "tlsSecurityProfile", "type")).To(Succeed())
+
+		t.updateHostedCluster(ctx, hc)
+
+		t.awaitAnyClusterOperatorConditions(ctx)
+	})
+
+	Specify("HostedCluster TLS adherence changes should trigger reconciliation", func(ctx context.Context) {
+		t.ensureNoClusterOperatorConditions(ctx)
+
+		hc := t.getHostedCluster(ctx)
+
+		// Update the TLS adherence
+		Expect(uns.SetNestedField(hc.Object, string(configv1.TLSAdherencePolicyStrictAllComponents),
+			"spec", "configuration", "apiServer", "tlsAdherence")).To(Succeed())
+		t.updateHostedCluster(ctx, hc)
+
+		t.awaitAnyClusterOperatorConditions(ctx)
+	})
+
+	Specify("HostedCluster non-TLS changes should not trigger reconciliation", func(ctx context.Context) {
+		hc := t.getHostedCluster(ctx)
+
+		// Update a non-TLS field (e.g., add a label)
+		hc.SetLabels(map[string]string{"test-label": "test-value"})
+		t.updateHostedCluster(ctx, hc)
+
+		t.ensureNoClusterOperatorConditions(ctx)
+	})
+}
+
+func (t *testDriver) getHostedCluster(ctx context.Context) *uns.Unstructured {
+	hc, err := t.fakeClient.ClientFor(names.ManagementClusterName).Dynamic().Resource(hypershift.HostedClusterGVR).
+		Namespace(hostedClusterNamespace).Get(ctx, hostedClusterName, metav1.GetOptions{})
+	Expect(err).NotTo(HaveOccurred())
+	return hc
+}
+
+func (t *testDriver) updateHostedCluster(ctx context.Context, hc *uns.Unstructured) {
+	_, err := t.fakeClient.ClientFor(names.ManagementClusterName).Dynamic().Resource(hypershift.HostedClusterGVR).
+		Namespace(hostedClusterNamespace).Update(ctx, hc, metav1.UpdateOptions{})
+	Expect(err).NotTo(HaveOccurred())
 }
 
 const testCertificate = `-----BEGIN CERTIFICATE-----
