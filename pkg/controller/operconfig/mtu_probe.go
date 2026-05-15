@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	operv1 "github.com/openshift/api/operator/v1"
@@ -68,7 +69,7 @@ func (r *ReconcileOperConfig) probeMTU(ctx context.Context, oc *operv1.Network, 
 	klog.Info("MTU prober deployed, waiting for result ConfigMap")
 
 	// wait up to 100 seconds for Job to report back.
-	err = wait.PollUntilContextTimeout(ctx, 5*time.Second, 100*time.Second, false, func(ctx context.Context) (bool, error) {
+	err = wait.PollUntilContextTimeout(ctx, time.Second, 100*time.Second, false, func(ctx context.Context) (bool, error) {
 		var err error
 		mtu, err = util.ReadMTUConfigMap(ctx, r.client)
 		if err == nil {
@@ -90,7 +91,7 @@ func (r *ReconcileOperConfig) probeMTU(ctx context.Context, oc *operv1.Network, 
 }
 
 func (r *ReconcileOperConfig) deployMTUProber(ctx context.Context, owner metav1.Object, infra *bootstrap.InfraStatus) error {
-	objs, err := renderMTUProber(infra)
+	objs, err := r.renderMTUProber(infra)
 	if err != nil {
 		return err
 	}
@@ -113,7 +114,7 @@ func (r *ReconcileOperConfig) deleteMTUProber(ctx context.Context, infra *bootst
 		return nil
 	}
 
-	objs, err := renderMTUProber(infra)
+	objs, err := r.renderMTUProber(infra)
 	if err != nil {
 		return err
 	}
@@ -131,7 +132,7 @@ func (r *ReconcileOperConfig) deleteMTUProber(ctx context.Context, infra *bootst
 	return nil
 }
 
-func renderMTUProber(infra *bootstrap.InfraStatus) ([]*uns.Unstructured, error) {
+func (r *ReconcileOperConfig) renderMTUProber(infra *bootstrap.InfraStatus) ([]*uns.Unstructured, error) {
 	data := render.MakeRenderData()
 	data.Data["CNOImage"] = os.Getenv("NETWORK_CHECK_TARGET_IMAGE")
 	data.Data["KUBERNETES_SERVICE_HOST"] = infra.APIServers[bootstrap.APIServerDefault].Host
@@ -147,7 +148,7 @@ func renderMTUProber(infra *bootstrap.InfraStatus) ([]*uns.Unstructured, error) 
 		data.Data["NO_PROXY"] = infra.Proxy.NoProxy
 	}
 
-	objs, err := render.RenderDir("bindata/network/mtu-prober", &data)
+	objs, err := render.RenderDir(filepath.Join(r.manifestPath, "network/mtu-prober"), &data)
 	if err != nil {
 		return nil, err
 	}

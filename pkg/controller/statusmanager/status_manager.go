@@ -165,6 +165,12 @@ func New(client cnoclient.Client, name, cluster string) *StatusManager {
 	return status
 }
 
+func NewWithClock(client cnoclient.Client, name, cluster string, clock clock.PassiveClock) *StatusManager {
+	status := New(client, name, cluster)
+	status.clock = clock
+	return status
+}
+
 // setClusterOperAnnotation sets an annotation on the clusterOperator network object
 func (status *StatusManager) setClusterOperAnnotation(obj *configv1.ClusterOperator) error {
 	value := []string{}

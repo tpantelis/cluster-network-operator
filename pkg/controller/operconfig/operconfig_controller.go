@@ -59,24 +59,23 @@ var ManifestPath = "./bindata"
 // Add creates a new OperConfig Controller and adds it to the Manager. The Manager will set fields on the Controller
 // and Start it when the Manager is Started.
 func Add(mgr manager.Manager, status *statusmanager.StatusManager, c cnoclient.Client, featureGates featuregates.FeatureGate) error {
-	rc, err := newReconciler(mgr, status, c, featureGates)
-	if err != nil {
-		return err
-	}
-	return add(mgr, rc)
+	return AddWithManifestPath(mgr, status, c, featureGates, ManifestPath)
 }
 
-const ControllerName = "operconfig"
-
-// newReconciler returns a new reconcile.Reconciler
-func newReconciler(mgr manager.Manager, status *statusmanager.StatusManager, c cnoclient.Client, featureGates featuregates.FeatureGate) (*ReconcileOperConfig, error) {
-	return &ReconcileOperConfig{
+func AddWithManifestPath(mgr manager.Manager, status *statusmanager.StatusManager, c cnoclient.Client,
+	featureGates featuregates.FeatureGate, manifestPath string) error {
+	rc := &ReconcileOperConfig{
 		client:       c,
 		status:       status,
 		mapper:       mgr.GetRESTMapper(),
 		featureGates: featureGates,
-	}, nil
+		manifestPath: manifestPath,
+	}
+
+	return add(mgr, rc)
 }
+
+const ControllerName = "operconfig"
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
 func add(mgr manager.Manager, r *ReconcileOperConfig) error {
@@ -213,9 +212,10 @@ var _ reconcile.Reconciler = &ReconcileOperConfig{}
 
 // ReconcileOperConfig reconciles a Network.operator.openshift.io object
 type ReconcileOperConfig struct {
-	client cnoclient.Client
-	status *statusmanager.StatusManager
-	mapper meta.RESTMapper
+	client       cnoclient.Client
+	status       *statusmanager.StatusManager
+	mapper       meta.RESTMapper
+	manifestPath string
 
 	// If we can skip cleaning up the MTU prober job.
 	mtuProberCleanedUp bool
@@ -379,7 +379,7 @@ func (r *ReconcileOperConfig) Reconcile(ctx context.Context, request reconcile.R
 	// Generate the objects.
 	// Note that Render might have side effects in the passed in operConfig that
 	// will be reflected later on in the updated status.
-	objs, progressing, err := network.Render(&operConfig.Spec, &clusterConfig.Spec, ManifestPath, r.client, r.featureGates, bootstrapResult)
+	objs, progressing, err := network.Render(&operConfig.Spec, &clusterConfig.Spec, r.manifestPath, r.client, r.featureGates, bootstrapResult)
 	if err != nil {
 		log.Printf("Failed to render: %v", err)
 		r.status.MaybeSetDegraded(statusmanager.OperatorConfig, "RenderError",
