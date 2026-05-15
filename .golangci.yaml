@@ -3,6 +3,12 @@ run:
   modules-download-mode: vendor
 linters:
   default: none
+  settings:
+    staticcheck:
+      dot-import-whitelist:
+        - github.com/onsi/ginkgo/v2
+        - github.com/onsi/gomega
+        - github.com/onsi/gomega/gstruct
   enable:
     - copyloopvar
     - errcheck
