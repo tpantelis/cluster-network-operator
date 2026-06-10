@@ -73,11 +73,21 @@ const (
 
 // HostedControlPlaneGVK GroupVersionKind for HostedControlPlane
 // Based on https://github.com/openshift/hypershift/blob/27316d734d806a29d63f65ddf746cafd4409a1de/api/hypershift/v1beta1/hosted_controlplane.go#L19
-var HostedControlPlaneGVK = schema.GroupVersionKind{
-	Group:   "hypershift.openshift.io",
-	Version: "v1beta1",
-	Kind:    "HostedControlPlane",
-}
+var (
+	HostedControlPlaneGVK = schema.GroupVersionKind{
+		Group:   "hypershift.openshift.io",
+		Version: "v1beta1",
+		Kind:    "HostedControlPlane",
+	}
+
+	HostedClusterGVK = schema.GroupVersionKind{
+		Group:   "hypershift.openshift.io",
+		Version: "v1beta1",
+		Kind:    "HostedCluster",
+	}
+
+	HostedClusterGVR = HostedClusterGVK.GroupVersion().WithResource("hostedclusters")
+)
 
 type HyperShiftConfig struct {
 	sync.Mutex
