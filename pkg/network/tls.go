@@ -61,6 +61,27 @@ func toTLSProfile(apiServerSpec *configv1.APIServerSpec) (bootstrap.TLSProfile, 
 		return bootstrap.TLSProfile{}, fmt.Errorf("failed to get TLS profile spec: %w", err)
 	}
 
+	// TLS 1.3 cipher suites are not configurable in Go - all TLS 1.3 ciphers are always enabled.
+	// Clear the cipher list for TLS 1.3 as some components are strict and fail if ciphers are provided with min version 1.3.
+	if profileSpec.MinTLSVersion == configv1.VersionTLS13 {
+		profileSpec.Ciphers = nil
+	}
+
+	// OCP uses OpenSSL names in its pre-defined TLS profile specs (although it's possible a user-defined custom profile
+	// spec could have IANA names). The components that accept cipher suites as an arg expect IANA names so convert them.
+	for i, cipher := range profileSpec.Ciphers {
+		// First try as IANA name directly.
+		if _, err := crypto.CipherSuite(cipher); err == nil {
+			continue
+		}
+
+		// Try converting from OpenSSL name to IANA name.
+		ianaCiphers := crypto.OpenSSLToIANACipherSuites([]string{cipher})
+		if len(ianaCiphers) == 1 {
+			profileSpec.Ciphers[i] = ianaCiphers[0]
+		}
+	}
+
 	return bootstrap.TLSProfile{
 		Spec:      profileSpec,
 		Adherence: apiServerSpec.TLSAdherence,
