@@ -100,15 +100,27 @@ func NewFakeClient(objs ...crclient.Object) cnoclient.Client {
 		}
 	}
 	co := &configv1.ClusterOperator{ObjectMeta: metav1.ObjectMeta{Name: ""}}
+
 	fc := FakeClusterClient{
 		kClient:      faketyped.NewClientset(ooTyped...),
 		dynclient:    fakedynamic.NewSimpleDynamicClient(scheme.Scheme, oo...),
 		crclient:     crfake.NewClientBuilder().WithStatusSubresource(co).WithObjects(objs...).Build(),
 		osOperClient: osoperfakeclient.NewClientset(),
 	}
+
+	// Create a management cluster client for HyperShift scenarios
+	// This represents a separate cluster, so it starts empty
+	managementClient := FakeClusterClient{
+		kClient:      faketyped.NewClientset(),
+		dynclient:    fakedynamic.NewSimpleDynamicClient(scheme.Scheme),
+		crclient:     crfake.NewClientBuilder().WithStatusSubresource(co).Build(),
+		osOperClient: osoperfakeclient.NewClientset(),
+	}
+
 	return &FakeClient{
 		clusterClients: map[string]*FakeClusterClient{
-			names.DefaultClusterName: &fc,
+			names.DefaultClusterName:    &fc,
+			names.ManagementClusterName: &managementClient,
 		},
 	}
 }
