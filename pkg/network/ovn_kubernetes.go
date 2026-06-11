@@ -209,6 +209,8 @@ func renderOVNKubernetes(conf *operv1.NetworkSpec, bootstrapResult *bootstrap.Bo
 		}
 	}
 
+	addTLSInfoToRenderData(data.Data, bootstrapResult, true)
+
 	if conf.Migration != nil {
 		if conf.Migration.MTU != nil {
 			if *conf.Migration.MTU.Network.From > *conf.Migration.MTU.Network.To {

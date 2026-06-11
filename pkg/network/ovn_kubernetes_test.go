@@ -4293,9 +4293,9 @@ func Test_renderOVNKubernetes(t *testing.T) {
 					config.DefaultNetwork.OVNKubernetesConfig.RouteAdvertisements = operv1.RouteAdvertisementsEnabled
 					return config
 				}, bootstrapResult: fakeBootstrapResultOVN,
-				manifestDir:  manifestDirOvn,
-				client:       cnofake.NewFakeClient(),
-				featureGates: preDefUDNFeatureGates,
+				manifestDir:        manifestDirOvn,
+				client:             cnofake.NewFakeClient(),
+				featureGates:       preDefUDNFeatureGates,
 			},
 			expectNumObjs: 53,
 		},
@@ -5005,4 +5005,126 @@ func extractDaemonSetEnvVars(g *WithT, objs []*uns.Unstructured, dsName, contain
 	}
 	g.Expect(true).To(BeFalse(), "could not find DaemonSet %s with container %s", dsName, containerName)
 	return envVars
+}
+
+// TestRenderOVNKubernetesTLS tests that TLS parameters are correctly rendered for ovnkube components
+func TestRenderOVNKubernetesTLS(t *testing.T) {
+	const (
+		releaseVersion = "5.0.0"
+		ovnImage       = "test-ovn-image"
+	)
+
+	g := NewWithT(t)
+
+	setupTest := func(t *testing.T) (*operv1.NetworkSpec, *bootstrap.BootstrapResult, cnoclient.Client) {
+		networkConfig := &operv1.NetworkSpec{
+			DefaultNetwork: operv1.DefaultNetworkDefinition{
+				Type: operv1.NetworkTypeOVNKubernetes,
+			},
+		}
+
+		fillDefaults(networkConfig, nil)
+
+		bootstrapResult := fakeBootstrapResult()
+		bootstrapResult.OVN = bootstrap.OVNBootstrapResult{
+			OVNKubernetesConfig: &bootstrap.OVNConfigBoostrapResult{
+				HyperShiftConfig: &bootstrap.OVNHyperShiftBootstrapResult{},
+			},
+		}
+		bootstrapResult.TLSProfile = bootstrap.TLSProfile{
+			Spec: configv1.TLSProfileSpec{
+				MinTLSVersion: configv1.VersionTLS12,
+				Ciphers:       []string{"TLS_AES_128_GCM_SHA256", "TLS_AES_256_GCM_SHA384"},
+			},
+			Adherence: configv1.TLSAdherencePolicyLegacyAdheringComponentsOnly,
+		}
+
+		t.Setenv("RELEASE_VERSION", releaseVersion)
+		t.Setenv("OVN_IMAGE", ovnImage)
+
+		client := cnofake.NewFakeClient()
+		return networkConfig, bootstrapResult, client
+	}
+
+	assertRenderSuccess := func(t *testing.T, networkConfig *operv1.NetworkSpec, bootstrapResult *bootstrap.BootstrapResult,
+		client cnoclient.Client) []*uns.Unstructured {
+		objs, _, err := renderOVNKubernetes(networkConfig, bootstrapResult, manifestDirOvn, client, getDefaultFeatureGates())
+		g.Expect(err).NotTo(HaveOccurred())
+
+		return objs
+	}
+
+	// findOvnkubeExecInConfigMap extracts the ovnkube exec command from the ovnkube-script-lib ConfigMap
+	findOvnkubeExecInConfigMap := func(t *testing.T, objs []*uns.Unstructured) string {
+		t.Helper()
+
+		configMap := mustFindRenderedObj(t, objs, "ConfigMap", "ovnkube-script-lib", &v1.ConfigMap{})
+
+		scriptContent := configMap.Data["ovnkube-lib.sh"]
+		startIdx := strings.Index(scriptContent, "exec /usr/bin/ovnkube")
+		g.Expect(startIdx).NotTo(Equal(-1), "Could not find 'exec /usr/bin/ovnkube' in ovnkube-script-lib ConfigMap")
+
+		return scriptContent[startIdx:]
+	}
+
+	// findOvnkubeExecInDeployment extracts the ovnkube exec command from a Deployment
+	findOvnkubeExecInDeployment := func(t *testing.T, objs []*uns.Unstructured, deploymentName, containerName string) string {
+		t.Helper()
+
+		deployment := mustFindRenderedObj(t, objs, "Deployment", deploymentName, &appsv1.Deployment{})
+		container := mustFindContainer(t, deployment.Spec.Template.Spec.Containers, containerName)
+
+		g.Expect(len(container.Command)).To(BeNumerically(">=", 3))
+		script := container.Command[2]
+		startIdx := strings.Index(script, "exec /usr/bin/ovnkube")
+		g.Expect(startIdx).NotTo(Equal(-1), "Could not find 'exec /usr/bin/ovnkube' in Deployment %s container %s",
+			deploymentName, containerName)
+
+		return script[startIdx:]
+	}
+
+	t.Run("ovnkube-node", func(t *testing.T) {
+		testTLSArgRendering(t, "ovnkube-node", func(t *testing.T, tlsProfile bootstrap.TLSProfile) string {
+			networkConfig, bootstrapResult, client := setupTest(t)
+			bootstrapResult.TLSProfile = tlsProfile
+			objs := assertRenderSuccess(t, networkConfig, bootstrapResult, client)
+			return findOvnkubeExecInConfigMap(t, objs)
+		})
+	})
+
+	t.Run("ovnkube-control-plane self-hosted", func(t *testing.T) {
+		testTLSArgRendering(t, "ovnkube-control-plane", func(t *testing.T, tlsProfile bootstrap.TLSProfile) string {
+			networkConfig, bootstrapResult, client := setupTest(t)
+			bootstrapResult.TLSProfile = tlsProfile
+			objs := assertRenderSuccess(t, networkConfig, bootstrapResult, client)
+			return findOvnkubeExecInDeployment(t, objs, "ovnkube-control-plane", "ovnkube-cluster-manager")
+		})
+	})
+
+	t.Run("ovnkube-control-plane managed", func(t *testing.T) {
+		testTLSArgRendering(t, "ovnkube-control-plane", func(t *testing.T, tlsProfile bootstrap.TLSProfile) string {
+			networkConfig, bootstrapResult, client := setupTest(t)
+
+			// Set up HyperShift environment
+			t.Setenv("HOSTED_CLUSTER_NAME", "test-cluster")
+			t.Setenv("HOSTED_CLUSTER_NAMESPACE", "clusters-test-cluster")
+			t.Setenv("MANAGEMENT_CLUSTER_NAME", "management")
+			t.Setenv("TOKEN_MINTER_IMAGE", "test-token-minter")
+			t.Setenv("SOCKS5_PROXY_IMAGE", "test-socks5-proxy")
+			t.Setenv("TOKEN_AUDIENCE", "test-audience")
+			t.Setenv("OVN_CONTROL_PLANE_IMAGE", "test-ovn-cp-image")
+
+			bootstrapResult.TLSProfile = tlsProfile
+			bootstrapResult.Infra.HostedControlPlane = &hypershift.HostedControlPlane{
+				ClusterID:    "test-cluster",
+				NodeSelector: map[string]string{},
+			}
+			bootstrapResult.OVN.OVNKubernetesConfig.HyperShiftConfig = &bootstrap.OVNHyperShiftBootstrapResult{
+				Enabled: true,
+			}
+
+			objs := assertRenderSuccess(t, networkConfig, bootstrapResult, client)
+			return findOvnkubeExecInDeployment(t, objs, "ovnkube-control-plane", "ovnkube-control-plane")
+		})
+	})
 }

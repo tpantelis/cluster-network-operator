@@ -702,6 +702,12 @@ data:
         --ovn-metrics-bind-address "127.0.0.1:${ovn_metrics_port}" \
         --metrics-enable-pprof \
         --metrics-enable-config-duration \
+        {{- if .UseTLSProfile }}
+        --tls-min-version={{.TLSMinVersion}} \
+        {{- if .TLSCipherSuites }}
+        --tls-cipher-suites={{.TLSCipherSuites}} \
+        {{- end }}
+        {{- end }}
         --export-ovs-metrics \
         --disable-snat-multiple-gws \
         ${export_network_flows_flags} \
