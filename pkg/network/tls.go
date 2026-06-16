@@ -39,7 +39,8 @@ func addTLSInfoToRenderData(data map[string]interface{}, bootstrapResult *bootst
 	data[UseTLSProfileKey] = true
 }
 
-func getTLSProfile(client cnoclient.Client) (bootstrap.TLSProfile, error) {
+// GetTLSProfile fetches the TLS profile from either the APIServer (standalone) or HostedCluster (HyperShift)
+func GetTLSProfile(client cnoclient.Client) (bootstrap.TLSProfile, error) {
 	hc := hypershift.NewHyperShiftConfig()
 	if hc.Enabled {
 		// For HyperShift, read TLS profile from HostedCluster CR in the management cluster
