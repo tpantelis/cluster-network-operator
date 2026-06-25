@@ -8,6 +8,7 @@ import (
 
 	operatorv1alpha1 "github.com/openshift/api/operator/v1alpha1"
 	cnoclient "github.com/openshift/cluster-network-operator/pkg/client"
+	"github.com/openshift/cluster-network-operator/pkg/hypershift"
 	"github.com/openshift/cluster-network-operator/pkg/names"
 	"github.com/openshift/cluster-network-operator/pkg/network"
 	"github.com/openshift/cluster-network-operator/pkg/operator"
@@ -172,8 +173,14 @@ func applyClusterTLSProfile(ctx context.Context, config *operatorv1alpha1.Generi
 		return fmt.Errorf("failed to create CNO client: %w", err)
 	}
 
+	// Fetch HostedControlPlane for HyperShift (if applicable)
+	hcp, err := hypershift.GetHostedControlPlane(client)
+	if err != nil {
+		return fmt.Errorf("failed to get HostedControlPlane: %w", err)
+	}
+
 	// Fetch TLS profile using network.GetTLSProfile (handles both standalone and HyperShift)
-	tlsProfile, err := network.GetTLSProfile(client)
+	tlsProfile, err := network.GetTLSProfile(client, hcp)
 	if err != nil {
 		return fmt.Errorf("failed to get TLS profile: %w", err)
 	}

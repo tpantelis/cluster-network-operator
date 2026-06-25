@@ -70,18 +70,19 @@ func Add(mgr manager.Manager, client cnoclient.Client, triggerRestart context.Ca
 		return err
 	}
 
-	// In HyperShift mode, also watch HostedCluster
+	// In HyperShift mode, also watch HostedControlPlane
 	hc := hypershift.NewHyperShiftConfig()
 	if hc.Enabled {
-		// Create a dynamic informer for HostedCluster in the management cluster
+		// Create a dynamic informer for HostedControlPlane in the management cluster
 		dynClient := client.ClientFor(names.ManagementClusterName).Dynamic()
-		hostedClusterInformer := cache.NewSharedIndexInformer(
+		hostedControlPlaneGVR := hypershift.HostedControlPlaneGVK.GroupVersion().WithResource("hostedcontrolplanes")
+		hostedControlPlaneInformer := cache.NewSharedIndexInformer(
 			cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
 				ListWithContextFunc: func(ctx context.Context, options metav1.ListOptions) (runtime.Object, error) {
-					return dynClient.Resource(hypershift.HostedClusterGVR).Namespace(hc.Namespace).List(ctx, options)
+					return dynClient.Resource(hostedControlPlaneGVR).Namespace(hc.Namespace).List(ctx, options)
 				},
 				WatchFuncWithContext: func(ctx context.Context, options metav1.ListOptions) (watch.Interface, error) {
-					return dynClient.Resource(hypershift.HostedClusterGVR).Namespace(hc.Namespace).Watch(ctx, options)
+					return dynClient.Resource(hostedControlPlaneGVR).Namespace(hc.Namespace).Watch(ctx, options)
 				},
 			}, dynClient),
 			&uns.Unstructured{},
@@ -89,16 +90,16 @@ func Add(mgr manager.Manager, client cnoclient.Client, triggerRestart context.Ca
 			cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
 		)
 
-		client.ClientFor(names.ManagementClusterName).AddCustomInformer(hostedClusterInformer)
+		client.ClientFor(names.ManagementClusterName).AddCustomInformer(hostedControlPlaneInformer)
 
 		err = c.Watch(&source.Informer{
-			Informer: hostedClusterInformer,
+			Informer: hostedControlPlaneInformer,
 			Handler: handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj crclient.Object) []reconcile.Request {
 				return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: "cluster"}}}
 			}),
 			Predicates: []predicate.TypedPredicate[crclient.Object]{
 				predicate.NewPredicateFuncs(func(obj crclient.Object) bool {
-					// Only watch our specific HostedCluster
+					// Only watch our specific HostedControlPlane
 					return obj.GetName() == hc.Name && obj.GetNamespace() == hc.Namespace
 				}),
 				predicate.Funcs{

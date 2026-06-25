@@ -9,12 +9,8 @@ import (
 	"github.com/openshift/cluster-network-operator/pkg/bootstrap"
 	cnoclient "github.com/openshift/cluster-network-operator/pkg/client"
 	"github.com/openshift/cluster-network-operator/pkg/hypershift"
-	"github.com/openshift/cluster-network-operator/pkg/names"
 	openshifttls "github.com/openshift/controller-runtime-common/pkg/tls"
 	"github.com/openshift/library-go/pkg/crypto"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -39,12 +35,15 @@ func addTLSInfoToRenderData(data map[string]interface{}, bootstrapResult *bootst
 	data[UseTLSProfileKey] = true
 }
 
-// GetTLSProfile fetches the TLS profile from either the APIServer (standalone) or HostedCluster (HyperShift)
-func GetTLSProfile(client cnoclient.Client) (bootstrap.TLSProfile, error) {
-	hc := hypershift.NewHyperShiftConfig()
-	if hc.Enabled {
-		// For HyperShift, read TLS profile from HostedCluster CR in the management cluster
-		return getTLSProfileFromHostedCluster(client, hc)
+// GetTLSProfile fetches the TLS profile from either the APIServer (standalone) or HostedControlPlane (HyperShift)
+func GetTLSProfile(client cnoclient.Client, hcp *hypershift.HostedControlPlane) (bootstrap.TLSProfile, error) {
+	// For HyperShift, read TLS profile from the already-parsed HostedControlPlane
+	if hcp != nil {
+		if hcp.APIServerSpec == nil {
+			// No APIServer spec, use defaults
+			return toTLSProfile(&configv1.APIServerSpec{})
+		}
+		return toTLSProfile(hcp.APIServerSpec)
 	}
 
 	// For non-HyperShift, read from APIServer CR in the default cluster
@@ -54,34 +53,6 @@ func GetTLSProfile(client cnoclient.Client) (bootstrap.TLSProfile, error) {
 	}
 
 	return toTLSProfile(&apiServer.Spec)
-}
-
-func getTLSProfileFromHostedCluster(client cnoclient.Client, hc *hypershift.HyperShiftConfig) (bootstrap.TLSProfile, error) {
-	// Fetch HostedCluster CR from management cluster
-	hostedCluster, err := client.ClientFor(names.ManagementClusterName).Dynamic().
-		Resource(hypershift.HostedClusterGVR).Namespace(hc.Namespace).Get(context.TODO(), hc.Name, metav1.GetOptions{})
-	if err != nil {
-		return bootstrap.TLSProfile{}, fmt.Errorf("failed to fetch HostedCluster %s/%s: %w", hc.Namespace, hc.Name, err)
-	}
-
-	apiServerConfig, found, err := unstructured.NestedFieldCopy(hostedCluster.UnstructuredContent(), "spec", "configuration", "apiServer")
-	if err != nil {
-		return bootstrap.TLSProfile{}, fmt.Errorf("failed to extract apiServer from HostedCluster: %w", err)
-	}
-
-	var apiServerSpec configv1.APIServerSpec
-	if found && apiServerConfig != nil {
-		apiServerMap, ok := apiServerConfig.(map[string]interface{})
-		if !ok {
-			return bootstrap.TLSProfile{}, fmt.Errorf("invalid HostedCluster apiServer type: %T", apiServerConfig)
-		}
-
-		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(apiServerMap, &apiServerSpec); err != nil {
-			return bootstrap.TLSProfile{}, fmt.Errorf("failed to convert apiServer spec: %w", err)
-		}
-	}
-
-	return toTLSProfile(&apiServerSpec)
 }
 
 func toTLSProfile(apiServerSpec *configv1.APIServerSpec) (bootstrap.TLSProfile, error) {

@@ -34,7 +34,7 @@ func Bootstrap(conf *operv1.Network, client cnoclient.Client) (*bootstrap.Bootst
 
 	out.IPTablesAlerter = iptablesAlerterBootstrap(client.ClientFor("").CRClient())
 
-	out.TLSProfile, err = GetTLSProfile(client)
+	out.TLSProfile, err = GetTLSProfile(client, infraStatus.HostedControlPlane)
 	if err != nil {
 		return nil, err
 	}

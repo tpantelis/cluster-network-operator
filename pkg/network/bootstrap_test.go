@@ -8,7 +8,6 @@ import (
 
 	configv1 "github.com/openshift/api/config/v1"
 	operv1 "github.com/openshift/api/operator/v1"
-	cnoclient "github.com/openshift/cluster-network-operator/pkg/client"
 	fakeclient "github.com/openshift/cluster-network-operator/pkg/client/fake"
 	"github.com/openshift/cluster-network-operator/pkg/hypershift"
 	"github.com/openshift/cluster-network-operator/pkg/names"
@@ -121,53 +120,21 @@ func TestBootstrap(t *testing.T) {
 			})
 		}
 
-		createHostedControlPlane := func(ctx context.Context, client cnoclient.Client) {
-			hcp := &uns.Unstructured{
-				Object: map[string]interface{}{
-					"apiVersion": hypershift.HostedControlPlaneGVK.GroupVersion().String(),
-					"kind":       hypershift.HostedControlPlaneGVK.Kind,
-					"metadata": map[string]interface{}{
-						"name":      hostedClusterName,
-						"namespace": hostedClusterNamespace,
-					},
-					"spec": map[string]interface{}{
-						"clusterID":                    "test-infra",
-						"controllerAvailabilityPolicy": "SingleReplica",
-						"networking": map[string]interface{}{
-							"apiServer": map[string]interface{}{
-								"advertiseAddress": "172.20.0.1",
-								"port":             int64(6443),
-							},
-							"serviceNetwork": []interface{}{
-								map[string]interface{}{
-									"cidr": "172.30.0.0/16",
-								},
-							},
-						},
-					},
-				},
-			}
-			if err := client.ClientFor(names.ManagementClusterName).CRClient().Create(ctx, hcp); err != nil {
-				t.Fatalf("Failed to create HostedControlPlane: %v", err)
-			}
-		}
-
-		t.Run("when the HostedCluster CR exists", func(t *testing.T) {
+		t.Run("when the HostedControlPlane CR exists", func(t *testing.T) {
 			setupHyperShift(t)
 
 			t.Run("should set the TLS profile info from the APIServer spec", func(t *testing.T) {
 				ctx := context.Background()
 				client := fakeclient.NewFakeClient(baseClientObjs...)
 
-				// Create HostedControlPlane
-				createHostedControlPlane(ctx, client)
-
-				// Create HostedCluster
-				hostedCluster := &uns.Unstructured{}
-				hostedCluster.SetGroupVersionKind(hypershift.HostedClusterGVK)
-				hostedCluster.SetName(hostedClusterName)
-				hostedCluster.SetNamespace(hostedClusterNamespace)
-				hostedCluster.Object["spec"] = map[string]interface{}{
+				// Create HostedControlPlane with TLS configuration
+				hcp := &uns.Unstructured{}
+				hcp.SetGroupVersionKind(hypershift.HostedControlPlaneGVK)
+				hcp.SetName(hostedClusterName)
+				hcp.SetNamespace(hostedClusterNamespace)
+				hcp.Object["spec"] = map[string]interface{}{
+					"clusterID":                    "test-cluster-id",
+					"controllerAvailabilityPolicy": "SingleReplica",
 					"configuration": map[string]interface{}{
 						"apiServer": map[string]interface{}{
 							"tlsSecurityProfile": map[string]interface{}{
@@ -178,10 +145,8 @@ func TestBootstrap(t *testing.T) {
 					},
 				}
 
-				_, err := client.ClientFor(names.ManagementClusterName).Dynamic().Resource(hypershift.HostedClusterGVR).
-					Namespace(hostedCluster.GetNamespace()).Create(ctx, hostedCluster, metav1.CreateOptions{})
-				if err != nil {
-					t.Fatalf("Failed to create HostedCluster: %v", err)
+				if err := client.ClientFor(names.ManagementClusterName).CRClient().Create(ctx, hcp); err != nil {
+					t.Fatalf("Failed to create HostedControlPlane: %v", err)
 				}
 
 				result, err := network.Bootstrap(baseOperConfig, client)
@@ -212,20 +177,18 @@ func TestBootstrap(t *testing.T) {
 				ctx := context.Background()
 				client := fakeclient.NewFakeClient(baseClientObjs...)
 
-				// Create HostedControlPlane
-				createHostedControlPlane(ctx, client)
+				// Create HostedControlPlane without APIServer spec
+				hcp := &uns.Unstructured{}
+				hcp.SetGroupVersionKind(hypershift.HostedControlPlaneGVK)
+				hcp.SetName(hostedClusterName)
+				hcp.SetNamespace(hostedClusterNamespace)
+				hcp.Object["spec"] = map[string]interface{}{
+					"clusterID":                    "test-cluster-id",
+					"controllerAvailabilityPolicy": "SingleReplica",
+				}
 
-				// Create HostedCluster without APIServer spec
-				hostedCluster := &uns.Unstructured{}
-				hostedCluster.SetGroupVersionKind(hypershift.HostedClusterGVK)
-				hostedCluster.SetName(hostedClusterName)
-				hostedCluster.SetNamespace(hostedClusterNamespace)
-				hostedCluster.Object["spec"] = map[string]interface{}{}
-
-				_, err := client.ClientFor(names.ManagementClusterName).Dynamic().Resource(hypershift.HostedClusterGVR).
-					Namespace(hostedCluster.GetNamespace()).Create(ctx, hostedCluster, metav1.CreateOptions{})
-				if err != nil {
-					t.Fatalf("Failed to create HostedCluster: %v", err)
+				if err := client.ClientFor(names.ManagementClusterName).CRClient().Create(ctx, hcp); err != nil {
+					t.Fatalf("Failed to create HostedControlPlane: %v", err)
 				}
 
 				result, err := network.Bootstrap(baseOperConfig, client)
