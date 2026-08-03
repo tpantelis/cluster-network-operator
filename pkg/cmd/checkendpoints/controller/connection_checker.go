@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"regexp"
@@ -174,8 +175,10 @@ func (c *connectionChecker) getTCPConnectLatency(ctx context.Context, address st
 
 // isDNSError returns true if the cause of the net operation error is a DNS error
 func isDNSError(err error) bool {
-	if opErr, ok := err.(*net.OpError); ok {
-		if _, ok := opErr.Err.(*net.DNSError); ok {
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		var dnsErr *net.DNSError
+		if errors.As(opErr.Err, &dnsErr) {
 			return true
 		}
 	}
