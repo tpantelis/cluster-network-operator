@@ -222,7 +222,7 @@ func renderOVNKubernetes(conf *operv1.NetworkSpec, bootstrapResult *bootstrap.Bo
 				data.Data["RoutableMTU"] = conf.Migration.MTU.Network.From
 			}
 
-			// c.MTU is used to set the applied network configuration MTU
+			// c.MTU is used to set the applied network MTU configuration
 			// MTU migration procedure:
 			//  1. User sets the MTU they want to migrate to
 			//  2. CNO sets the MTU as applied
@@ -681,7 +681,7 @@ func renderOVNKubernetes(conf *operv1.NetworkSpec, bootstrapResult *bootstrap.Bo
 
 // GetIPsecMode return the ipsec mode accounting for upgrade scenarios
 // Find the IPsec mode from Ipsec.config
-// Ipsec.config == nil (bw compatibility) || ipsecConfig == Off ==> ipsec is disabled
+// IpsecConfig == nil (bw compatibility) || ipsecConfig == Off ==> ipsec is disabled
 // ipsecConfig.mode == "" (bw compatibility) || ipsec.Config == Full ==> ipsec is enabled for NS and EW
 // ipsecConfig.mode == External ==> ipsec is enabled for NS only
 func GetIPsecMode(conf *operv1.OVNKubernetesConfig) operv1.IPsecMode {
@@ -713,7 +713,7 @@ func shouldRenderIPsec(conf *operv1.OVNKubernetesConfig, bootstrapResult *bootst
 	// Internally, these damonsets coordinate when they are active or dormant:
 	// before the IPsec MachineConfig extensions are active, the containerized
 	// daemonset is active and the host daemonset is dormant; after rebooting
-	// with the the IPsec MachineConfig extensions active, the containerized
+	// with the IPsec MachineConfig extensions active, the containerized
 	// daemonset is dormant and the host daemonset is active. When the upgrade
 	// finishes, the containerized daemonset is then not rendered.
 	//
