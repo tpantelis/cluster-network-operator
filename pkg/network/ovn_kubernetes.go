@@ -1430,18 +1430,18 @@ func bootstrapOVN(ctx context.Context, conf *operv1.Network, kubeClient cnoclien
 	clusterConfigLookup := types.NamespacedName{Name: CLUSTER_CONFIG_NAME, Namespace: CLUSTER_CONFIG_NAMESPACE}
 
 	if err := kubeClient.ClientFor("").CRClient().Get(ctx, clusterConfigLookup, clusterConfig); err != nil {
-		return nil, fmt.Errorf("unable to bootstrap OVN, unable to retrieve cluster config: %s", err)
+		return nil, fmt.Errorf("unable to bootstrap OVN, unable to retrieve cluster config: %w", err)
 	}
 
 	rcD := replicaCountDecoder{}
 	if err := yaml.Unmarshal([]byte(clusterConfig.Data["install-config"]), &rcD); err != nil {
-		return nil, fmt.Errorf("unable to bootstrap OVN, unable to unmarshal install-config: %s", err)
+		return nil, fmt.Errorf("unable to bootstrap OVN, unable to unmarshal install-config: %w", err)
 	}
 
 	hc := hypershift.NewHyperShiftConfig()
 	ovnConfigResult, err := bootstrapOVNConfig(ctx, conf, kubeClient, hc, infraStatus)
 	if err != nil {
-		return nil, fmt.Errorf("unable to bootstrap OVN config, err: %v", err)
+		return nil, fmt.Errorf("unable to bootstrap OVN config, err: %w", err)
 	}
 
 	var controlPlaneReplicaCount int
@@ -2212,7 +2212,7 @@ func validateOVNKubernetesSubnets(conf *operv1.NetworkSpec) error {
 func validateOVNKubernetesSubnet(name, subnet string, otherSubnets *iputil.IPPool, cn []operv1.ClusterNetworkEntry) error {
 	_, cidr, err := net.ParseCIDR(subnet)
 	if err != nil {
-		return fmt.Errorf("%s is invalid: %s", name, err)
+		return fmt.Errorf("%s is invalid: %w", name, err)
 	} else if cn != nil && !utilnet.IsIPv6CIDRString(subnet) {
 		if !isV4NodeSubnetLargeEnough(cn, subnet) {
 			return fmt.Errorf("%s %s is not large enough for the maximum number of nodes which can be supported by ClusterNetwork", name, subnet)
@@ -2223,7 +2223,7 @@ func validateOVNKubernetesSubnet(name, subnet string, otherSubnets *iputil.IPPoo
 		}
 	}
 	if err := otherSubnets.Add(*cidr); err != nil {
-		return fmt.Errorf("whole or subset of %s CIDR %s is already in use: %s", name, subnet, err)
+		return fmt.Errorf("whole or subset of %s CIDR %s is already in use: %w", name, subnet, err)
 	}
 	return nil
 }
@@ -2241,7 +2241,7 @@ func getOVNKubernetesConfigOverrides(ctx context.Context, client cnoclient.Clien
 		if apierrors.IsNotFound(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("unable to retrieve config from configmap %v: %s", OVNKubernetesConfigOverridesCMName, err)
+		return nil, fmt.Errorf("unable to retrieve config from configmap %v: %w", OVNKubernetesConfigOverridesCMName, err)
 	}
 	return configMap.Data, nil
 }
