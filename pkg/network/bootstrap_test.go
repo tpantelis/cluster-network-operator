@@ -78,7 +78,7 @@ func TestBootstrap(t *testing.T) {
 
 		t.Run("should set the TLS profile info from the APIServer CR", func(t *testing.T) {
 			client := fakeclient.NewFakeClient(clientObjs...)
-			result, err := network.Bootstrap(baseOperConfig, client)
+			result, err := network.Bootstrap(context.TODO(), baseOperConfig, client)
 			if err != nil {
 				t.Fatalf("Bootstrap failed: %v", err)
 			}
@@ -152,7 +152,7 @@ func TestBootstrap(t *testing.T) {
 					t.Fatalf("Failed to create HostedControlPlane: %v", err)
 				}
 
-				result, err := network.Bootstrap(baseOperConfig, client)
+				result, err := network.Bootstrap(context.TODO(), baseOperConfig, client)
 				if err != nil {
 					t.Fatalf("Bootstrap failed: %v", err)
 				}
@@ -195,7 +195,7 @@ func TestBootstrap(t *testing.T) {
 					t.Fatalf("Failed to create HostedControlPlane: %v", err)
 				}
 
-				result, err := network.Bootstrap(baseOperConfig, client)
+				result, err := network.Bootstrap(context.TODO(), baseOperConfig, client)
 				if err != nil {
 					t.Fatalf("Bootstrap failed: %v", err)
 				}

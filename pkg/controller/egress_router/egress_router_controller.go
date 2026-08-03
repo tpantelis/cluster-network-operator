@@ -135,7 +135,7 @@ func (r EgressRouterReconciler) Reconcile(ctx context.Context, request reconcile
 			klog.Error(err)
 			r.egressrouterErrs[request.NamespacedName] =
 				errors.Wrapf(err, "could not reconcile Egress Router %s", request.NamespacedName)
-			r.setStatus()
+			r.setStatus(ctx)
 			return reconcile.Result{}, err
 		}
 
@@ -146,27 +146,27 @@ func (r EgressRouterReconciler) Reconcile(ctx context.Context, request reconcile
 		klog.Error(err)
 		r.egressrouterErrs[request.NamespacedName] =
 			errors.Wrapf(err, "could not reconcile Egress Router %s", request.NamespacedName)
-		r.setStatus()
+		r.setStatus(ctx)
 		return reconcile.Result{}, err
 	}
 
 	klog.Infof("successful reconciliation")
 	delete(r.egressrouterErrs, request.NamespacedName)
-	r.setStatus()
+	r.setStatus(ctx)
 	return reconcile.Result{RequeueAfter: ResyncPeriod}, nil
 }
 
 // setStatus summarizes the status of all Egress Router objects and updates the statusmanager
 // as appropriate.
-func (r *EgressRouterReconciler) setStatus() {
+func (r *EgressRouterReconciler) setStatus(ctx context.Context) {
 	if len(r.egressrouterErrs) == 0 {
-		r.status.SetNotDegraded(statusmanager.EgressRouterConfig)
+		r.status.SetNotDegraded(ctx, statusmanager.EgressRouterConfig)
 	} else {
 		msgs := []string{}
 		for _, e := range r.egressrouterErrs {
 			msgs = append(msgs, e.Error())
 		}
-		r.status.MaybeSetDegraded(statusmanager.EgressRouterConfig, "EgressRouterError", strings.Join(msgs, ", "))
+		r.status.MaybeSetDegraded(ctx, statusmanager.EgressRouterConfig, "EgressRouterError", strings.Join(msgs, ", "))
 	}
 }
 

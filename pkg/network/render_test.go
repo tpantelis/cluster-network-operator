@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strings"
@@ -354,12 +355,12 @@ func TestRenderUnknownNetwork(t *testing.T) {
 	err = IsChangeSafe(prev, next, &fakeBootstrapResult().Infra)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	bootstrapResult, err := Bootstrap(&config, client)
+	bootstrapResult, err := Bootstrap(context.TODO(), &config, client)
 	g.Expect(err).NotTo(HaveOccurred())
 
 	featureGatesCNO := getDefaultFeatureGatesWithDualStack()
 
-	objs, _, err := Render(prev, &configv1.NetworkSpec{}, manifestDir, client, featureGatesCNO, bootstrapResult)
+	objs, _, err := Render(context.Background(), prev, &configv1.NetworkSpec{}, manifestDir, client, featureGatesCNO, bootstrapResult)
 	g.Expect(err).NotTo(HaveOccurred())
 
 	// Validate that ovn-kubernetes isn't rendered

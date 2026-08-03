@@ -35,7 +35,7 @@ const (
 	pluginName = "networking-console-plugin"
 )
 
-func Render(operConf *operv1.NetworkSpec, clusterConf *configv1.NetworkSpec, manifestDir string, client cnoclient.Client, featureGates featuregates.FeatureGate, bootstrapResult *bootstrap.BootstrapResult) ([]*uns.Unstructured, bool, error) {
+func Render(ctx context.Context, operConf *operv1.NetworkSpec, clusterConf *configv1.NetworkSpec, manifestDir string, client cnoclient.Client, featureGates featuregates.FeatureGate, bootstrapResult *bootstrap.BootstrapResult) ([]*uns.Unstructured, bool, error) {
 	log.Printf("Starting render phase")
 	var progressing bool
 	objs := []*uns.Unstructured{}
@@ -57,7 +57,7 @@ func Render(operConf *operv1.NetworkSpec, clusterConf *configv1.NetworkSpec, man
 	objs = append(objs, o...)
 
 	// render MultusAdmissionController
-	o, err = renderMultusAdmissionController(operConf, manifestDir,
+	o, err = renderMultusAdmissionController(ctx, operConf, manifestDir,
 		bootstrapResult.Infra.ControlPlaneTopology == configv1.ExternalTopologyMode, bootstrapResult, client, featureGates)
 	if err != nil {
 		return nil, progressing, err
@@ -111,7 +111,7 @@ func Render(operConf *operv1.NetworkSpec, clusterConf *configv1.NetworkSpec, man
 	objs = append(objs, o...)
 
 	// render network node identity
-	o, err = renderNetworkNodeIdentity(operConf, bootstrapResult, manifestDir, client)
+	o, err = renderNetworkNodeIdentity(ctx, operConf, bootstrapResult, manifestDir, client)
 	if err != nil {
 		return nil, progressing, err
 	}
@@ -144,7 +144,7 @@ func Render(operConf *operv1.NetworkSpec, clusterConf *configv1.NetworkSpec, man
 		objs = append(objs, o...)
 	}
 
-	err = registerNetworkingConsolePlugin(bootstrapResult, client)
+	err = registerNetworkingConsolePlugin(ctx, bootstrapResult, client)
 	if err != nil {
 		return nil, progressing, err
 	}
@@ -681,7 +681,7 @@ func getMultusAdmissionControllerReplicas(bootstrapResult *bootstrap.BootstrapRe
 }
 
 // renderMultusAdmissionController generates the manifests of Multus Admission Controller
-func renderMultusAdmissionController(conf *operv1.NetworkSpec, manifestDir string, externalControlPlane bool, bootstrapResult *bootstrap.BootstrapResult, client cnoclient.Client, featureGates featuregates.FeatureGate) ([]*uns.Unstructured, error) {
+func renderMultusAdmissionController(ctx context.Context, conf *operv1.NetworkSpec, manifestDir string, externalControlPlane bool, bootstrapResult *bootstrap.BootstrapResult, client cnoclient.Client, featureGates featuregates.FeatureGate) ([]*uns.Unstructured, error) {
 	if *conf.DisableMultiNetwork {
 		return nil, nil
 	}
@@ -690,7 +690,7 @@ func renderMultusAdmissionController(conf *operv1.NetworkSpec, manifestDir strin
 	out := []*uns.Unstructured{}
 
 	hsc := hypershift.NewHyperShiftConfig()
-	objs, err := renderMultusAdmissonControllerConfig(manifestDir, externalControlPlane,
+	objs, err := renderMultusAdmissonControllerConfig(ctx, manifestDir, externalControlPlane,
 		bootstrapResult, client, hsc, names.ManagementClusterName, featureGates)
 	if err != nil {
 		return nil, err
@@ -833,13 +833,13 @@ func renderNetworkingConsolePlugin(manifestDir string, bootstrapResult *bootstra
 }
 
 // registerNetworkingConsolePlugin enables console plugin for networking-console if not already enabled
-func registerNetworkingConsolePlugin(bootstrapResult *bootstrap.BootstrapResult, cl cnoclient.Client) error {
+func registerNetworkingConsolePlugin(ctx context.Context, bootstrapResult *bootstrap.BootstrapResult, cl cnoclient.Client) error {
 	if !bootstrapResult.Infra.ConsolePluginCRDExists {
 		return nil
 	}
 
 	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
-		console, err := cl.ClientFor("").OpenshiftOperatorClient().OperatorV1().Consoles().Get(context.TODO(), "cluster", metav1.GetOptions{})
+		console, err := cl.ClientFor("").OpenshiftOperatorClient().OperatorV1().Consoles().Get(ctx, "cluster", metav1.GetOptions{})
 		if err != nil {
 			return errors.Wrap(err, "Failed to get Console Operator resource")
 		}
@@ -849,7 +849,7 @@ func registerNetworkingConsolePlugin(bootstrapResult *bootstrap.BootstrapResult,
 		}
 		console.Spec.Plugins = append(console.Spec.Plugins, pluginName)
 
-		_, err = cl.Default().OpenshiftOperatorClient().OperatorV1().Consoles().Update(context.TODO(), console, metav1.UpdateOptions{})
+		_, err = cl.Default().OpenshiftOperatorClient().OperatorV1().Consoles().Update(ctx, console, metav1.UpdateOptions{})
 		return err
 	})
 }

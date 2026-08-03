@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -66,7 +67,7 @@ func TestValidateClusterConfig(t *testing.T) {
 	err := createProxy(client)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	infraRes, err := platform.InfraStatus(client)
+	infraRes, err := platform.InfraStatus(context.TODO(), client)
 	g.Expect(err).NotTo(HaveOccurred())
 
 	cc := *ClusterConfig.DeepCopy()
@@ -154,7 +155,7 @@ func TestValidateClusterConfigDualStack(t *testing.T) {
 	err := createProxy(client)
 	g.Expect(err).NotTo(HaveOccurred())
 
-	infraRes, err := platform.InfraStatus(client)
+	infraRes, err := platform.InfraStatus(context.TODO(), client)
 	g.Expect(err).NotTo(HaveOccurred())
 
 	cc := *ClusterConfig.DeepCopy()
@@ -215,7 +216,7 @@ func TestValidateClusterConfigDualStack(t *testing.T) {
 	client = fake.NewFakeClient(infrastructure)
 	err = createProxy(client)
 	g.Expect(err).NotTo(HaveOccurred())
-	infraRes, err = platform.InfraStatus(client)
+	infraRes, err = platform.InfraStatus(context.TODO(), client)
 	g.Expect(err).NotTo(HaveOccurred())
 	cc = *ClusterConfig.DeepCopy()
 	cc.ServiceNetwork = append(cc.ServiceNetwork, "fd02::/112")
@@ -234,7 +235,7 @@ func TestValidateClusterConfigDualStack(t *testing.T) {
 	client = fake.NewFakeClient(infrastructure)
 	err = createProxy(client)
 	g.Expect(err).NotTo(HaveOccurred())
-	infraRes, err = platform.InfraStatus(client)
+	infraRes, err = platform.InfraStatus(context.TODO(), client)
 	g.Expect(err).NotTo(HaveOccurred())
 	cc = *ClusterConfig.DeepCopy()
 	cc.ServiceNetwork = append(cc.ServiceNetwork, "fd02::/112")
@@ -252,7 +253,7 @@ func TestValidateClusterConfigDualStack(t *testing.T) {
 	client = fake.NewFakeClient(infrastructure)
 	err = createProxy(client)
 	g.Expect(err).NotTo(HaveOccurred())
-	infraRes, err = platform.InfraStatus(client)
+	infraRes, err = platform.InfraStatus(context.TODO(), client)
 	g.Expect(err).NotTo(HaveOccurred())
 	cc = *ClusterConfig.DeepCopy()
 	cc.ServiceNetwork = append(cc.ServiceNetwork, "fd02::/112")
@@ -273,7 +274,7 @@ func TestValidateClusterConfigDualStack(t *testing.T) {
 	client = fake.NewFakeClient(infrastructure)
 	err = createProxy(client)
 	g.Expect(err).NotTo(HaveOccurred())
-	infraRes, err = platform.InfraStatus(client)
+	infraRes, err = platform.InfraStatus(context.TODO(), client)
 	g.Expect(err).NotTo(HaveOccurred())
 	cc = *ClusterConfig.DeepCopy()
 	cc.ServiceNetwork = append(cc.ServiceNetwork, "fd02::/112")

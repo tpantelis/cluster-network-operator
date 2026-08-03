@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -65,14 +66,14 @@ func TestRenderMultusAdmissionController(t *testing.T) {
 	bootstrapResult := fakeBootstrapResult()
 
 	// disable MultusAdmissionController
-	objs, err := renderMultusAdmissionController(config, manifestDir, false, bootstrapResult, fakeClient, getDefaultFeatureGates())
+	objs, err := renderMultusAdmissionController(context.Background(), config, manifestDir, false, bootstrapResult, fakeClient, getDefaultFeatureGates())
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(objs).NotTo(ContainElement(HaveKubernetesID("Deployment", "openshift-multus", "multus-admission-controller")))
 
 	// enable MultusAdmissionController
 	enabled := false
 	config.DisableMultiNetwork = &enabled
-	objs, err = renderMultusAdmissionController(config, manifestDir, false, bootstrapResult, fakeClient, getDefaultFeatureGates())
+	objs, err = renderMultusAdmissionController(context.Background(), config, manifestDir, false, bootstrapResult, fakeClient, getDefaultFeatureGates())
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(objs).To(ContainElement(HaveKubernetesID("Deployment", "openshift-multus", "multus-admission-controller")))
 
@@ -93,7 +94,7 @@ func TestRenderMultusAdmissionController(t *testing.T) {
 	testTLSArgRendering(t, "multus-admission-controller webhook", "", "", func(t *testing.T, tlsProfile bootstrap.TLSProfile) string {
 		testBootstrap := *bootstrapResult
 		testBootstrap.TLSProfile = tlsProfile
-		objs, err := renderMultusAdmissionController(config, manifestDir, false, &testBootstrap, fakeClient, getDefaultFeatureGates())
+		objs, err := renderMultusAdmissionController(context.Background(), config, manifestDir, false, &testBootstrap, fakeClient, getDefaultFeatureGates())
 		g.Expect(err).NotTo(HaveOccurred())
 		return findMultusWebhookExec(t, objs)
 	})
@@ -105,7 +106,7 @@ func TestRenderMultusAdmissionController(t *testing.T) {
 		func(t *testing.T, tlsProfile bootstrap.TLSProfile) string {
 			testBootstrap := *bootstrapResult
 			testBootstrap.TLSProfile = tlsProfile
-			objs, err := renderMultusAdmissionController(config, manifestDir, false, &testBootstrap, fakeClient, getDefaultFeatureGates())
+			objs, err := renderMultusAdmissionController(context.Background(), config, manifestDir, false, &testBootstrap, fakeClient, getDefaultFeatureGates())
 			g.Expect(err).NotTo(HaveOccurred())
 			deployment := mustFindRenderedObj[*appsv1.Deployment](t, objs, "Deployment", "multus-admission-controller")
 			container := mustFindContainer(t, deployment.Spec.Template.Spec.Containers, "kube-rbac-proxy")
@@ -174,7 +175,7 @@ func TestRenderMultusAdmissonControllerConfigForHyperShift(t *testing.T) {
 	hsc.ReleaseImage = "MyImage"
 	hsc.ControlPlaneImage = "MyCPOImage"
 
-	objs, err := renderMultusAdmissonControllerConfig(manifestDir, false, bootstrapResult, fakeClient, hsc, "", getDefaultFeatureGates())
+	objs, err := renderMultusAdmissonControllerConfig(context.Background(), manifestDir, false, bootstrapResult, fakeClient, hsc, "", getDefaultFeatureGates())
 	g.Expect(err).NotTo(HaveOccurred())
 
 	// Check rendered object
@@ -202,13 +203,13 @@ func TestRenderMultusAdmissonControllerConfigForHyperShift(t *testing.T) {
 	testTLSArgRendering(t, "multus-admission-controller webhook (HyperShift)", "", "", func(t *testing.T, tlsProfile bootstrap.TLSProfile) string {
 		testBootstrap := *bootstrapResult
 		testBootstrap.TLSProfile = tlsProfile
-		objs, err := renderMultusAdmissonControllerConfig(manifestDir, false, &testBootstrap, fakeClient, hsc, "", getDefaultFeatureGates())
+		objs, err := renderMultusAdmissonControllerConfig(context.Background(), manifestDir, false, &testBootstrap, fakeClient, hsc, "", getDefaultFeatureGates())
 		g.Expect(err).NotTo(HaveOccurred())
 		return findMultusWebhookExec(t, objs)
 	})
 }
 
-// TestRenderMultusAdmissionControllerGetNamespace tests getOpenshiftNamespaces()
+// TestRenderMultusAdmissionControllerGetNamespace tests getOpenshiftNamespaces(context.Background(), )
 func TestRenderMultusAdmissionControllerGetNamespace(t *testing.T) {
 	g := NewGomegaWithT(t)
 
@@ -239,7 +240,7 @@ func TestRenderMultusAdmissionControllerGetNamespace(t *testing.T) {
 			},
 		},
 		})
-	namespaces, err := getOpenshiftNamespaces(fakeClient)
+	namespaces, err := getOpenshiftNamespaces(context.Background(), fakeClient)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(namespaces).To(Equal("test1-ignored,test3-ignored"))
 }
