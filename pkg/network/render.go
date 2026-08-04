@@ -860,8 +860,7 @@ func renderAdditionalRoutingCapabilities(conf *operv1.NetworkSpec, bootstrapResu
 	}
 	var out []*uns.Unstructured
 	for _, provider := range conf.AdditionalRoutingCapabilities.Providers {
-		switch provider {
-		case operv1.RoutingCapabilitiesProviderFRR:
+		if provider == operv1.RoutingCapabilitiesProviderFRR {
 			data := render.MakeRenderData()
 
 			addTLSInfoToRenderData(data.Data, bootstrapResult, true)
