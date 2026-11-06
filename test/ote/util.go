@@ -713,6 +713,7 @@ func forwardPortAndExecute(ctx context.Context, resourceName, namespace, remoteP
 			defer func() {
 				if cmd.Process != nil {
 					_ = cmd.Process.Kill()
+					_ = cmd.Wait()
 				}
 			}()
 

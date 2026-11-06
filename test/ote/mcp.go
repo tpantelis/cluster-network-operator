@@ -40,7 +40,7 @@ func AwaitMCPRolloutStart(ctx context.Context, client machineconfigclient.Interf
 
 // AwaitAllMCPsComplete waits for all MachineConfigPools to finish updating
 func AwaitAllMCPsComplete(ctx context.Context, client machineconfigclient.Interface, timeout time.Duration) {
-	e2e.Logf("Waiting for MCP rollout to complete (this may take up to %v minutes)", MCPRolloutCompleteTimeout/time.Minute)
+	e2e.Logf("Waiting for MCP rollout to complete (timeout: %v)", timeout)
 
 	Eventually(func(g Gomega, ctx context.Context) {
 		mcps, err := client.MachineconfigurationV1().MachineConfigPools().List(ctx, metav1.ListOptions{})
